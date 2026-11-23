@@ -2,6 +2,7 @@
 // Subject Code: 901 | Booklet Series: A | Total Questions: 200 | Maximum Marks: 300 | Duration: 180 Mins
 
 import { Question } from '../types/database';
+import { TNPSC_ADDITIONAL_PAPERS_QUESTIONS } from './tnpscAllPapersData';
 
 export interface TNPSCQuestion {
   id: string;
@@ -17,11 +18,13 @@ export interface TNPSCQuestion {
   is_verified: boolean;
   explanation: string;
   explanation_ta?: string;
-  subject: 'General Knowledge' | 'General Mental Ability' | 'General English';
+  subject: 'General Knowledge' | 'General Mental Ability' | 'General English' | 'General Studies' | 'General Tamil' | string;
   topic: string;
   page_number: number;
   source_paper_id: string;
   status: 'verified' | 'pending_verification' | 'rejected';
+  exam_group?: 'Group 2' | 'Group 4';
+  exam_year?: number;
 }
 
 export interface TNPSCExamConfig {
@@ -30,6 +33,8 @@ export interface TNPSCExamConfig {
   topic?: string;
   questionCount: number;
   durationMinutes: number;
+  examGroup?: string;
+  examYear?: number | string;
 }
 
 export interface TNPSCAttemptRecord {
@@ -4086,15 +4091,72 @@ export const TNPSC_GROUP4_2011_QUESTIONS: TNPSCQuestion[] = [
   }
 ];
 
-// Retrieve questions with local user edits/verifications
-export function getTNPSCQuestions(filter?: {
+function matchesSubject(qSubject: string, filterSubject?: string): boolean {
+  if (!filterSubject || filterSubject === 'All' || filterSubject === 'All Subjects') return true;
+  const f = filterSubject.toLowerCase().trim();
+  const q = (qSubject || '').toLowerCase().trim();
+
+  if (q.includes(f) || f.includes(q)) return true;
+
+  // General Studies / General Knowledge / General Awareness synonyms
+  const isFilterGS = f.includes('studies') || f.includes('knowledge') || f.includes('general awareness') || f.includes('ga');
+  const isQuestionGS = q.includes('knowledge') || q.includes('studies') || q.includes('ga') || q.includes('awareness');
+  if (isFilterGS && isQuestionGS) return true;
+
+  // Mental Ability / Aptitude / Quant synonyms
+  const isFilterApt = f.includes('aptitude') || f.includes('mental') || f.includes('math') || f.includes('quant');
+  const isQuestionApt = q.includes('mental') || q.includes('aptitude') || q.includes('math') || q.includes('quant');
+  if (isFilterApt && isQuestionApt) return true;
+
+  // Tamil synonyms
+  const isFilterTamil = f.includes('tamil') || f.includes('தமிழ்');
+  const isQuestionTamil = q.includes('tamil') || q.includes('தமிழ்');
+  if (isFilterTamil && isQuestionTamil) return true;
+
+  // English synonyms
+  const isFilterEnglish = f.includes('english') || f.includes('ஆங்கிலம்');
+  const isQuestionEnglish = q.includes('english') || q.includes('ஆங்கிலம்');
+  if (isFilterEnglish && isQuestionEnglish) return true;
+
+  return false;
+}
+
+function matchesTopic(qTopic: string, filterTopic?: string): boolean {
+  if (!filterTopic || filterTopic === 'All' || filterTopic === 'All Topics') return true;
+  const f = filterTopic.toLowerCase().trim();
+  const q = (qTopic || '').toLowerCase().trim();
+
+  if (q.includes(f) || f.includes(q)) return true;
+
+  // Extract key tokens (e.g. "polity", "percentage", "science", "interest", "work", "ratio")
+  const tokens = f.split(/[\s,()&\-\/]+/).filter((w) => w.length > 2 && !['and', 'the', 'for', 'part', 'with'].includes(w));
+  return tokens.some((token) => q.includes(token));
+}
+
+export interface TNPSCQuestionFilter {
   subject?: string;
   topic?: string;
   count?: number;
   status?: string;
   page?: number;
-}): TNPSCQuestion[] {
-  let list = [...TNPSC_GROUP4_2011_QUESTIONS];
+  examGroup?: string;
+  examYear?: number | string;
+  paperId?: string;
+  excludeIds?: string[] | Set<string>;
+  randomize?: boolean;
+}
+
+// Retrieve questions with local user edits/verifications & multi-year archive support
+export function getTNPSCQuestions(filter?: TNPSCQuestionFilter): TNPSCQuestion[] {
+  // Explicitly tag 2011 memory dataset if fields are missing
+  const g4_2011: TNPSCQuestion[] = TNPSC_GROUP4_2011_QUESTIONS.map((q) => ({
+    ...q,
+    exam_group: (q.exam_group || 'Group 4') as 'Group 2' | 'Group 4',
+    exam_year: q.exam_year || 2011,
+    source_paper_id: q.source_paper_id || 'paper-tnpsc-g4-2011',
+  }));
+
+  let list: TNPSCQuestion[] = [...g4_2011, ...TNPSC_ADDITIONAL_PAPERS_QUESTIONS];
   
   try {
     const saved = localStorage.getItem(LOCAL_STORAGE_KEY);
@@ -4107,20 +4169,62 @@ export function getTNPSCQuestions(filter?: {
     console.warn('Failed to read custom TNPSC questions from localStorage', e);
   }
 
-  if (filter?.subject && filter.subject !== 'All') {
-    list = list.filter(q => q.subject === filter.subject);
+  // Filter by Paper ID if provided
+  if (filter?.paperId) {
+    list = list.filter((q) => q.source_paper_id === filter.paperId);
   }
 
-  if (filter?.topic && filter.topic !== 'All') {
-    list = list.filter(q => q.topic.toLowerCase().includes(filter.topic!.toLowerCase()));
+  // Filter by Exam Group (Group 2 vs Group 4)
+  if (filter?.examGroup && filter.examGroup !== 'All' && filter.examGroup !== 'All Groups') {
+    const normGroup = filter.examGroup.includes('2') ? 'Group 2' : 'Group 4';
+    list = list.filter((q) => q.exam_group === normGroup);
+  }
+
+  // Filter by Exam Year
+  if (filter?.examYear && filter.examYear !== 'All' && filter.examYear !== 'All Years') {
+    const targetYear = Number(filter.examYear);
+    list = list.filter((q) => q.exam_year === targetYear);
+  }
+
+  // Filter by Subject with smart synonym handling
+  if (filter?.subject && filter.subject !== 'All' && filter.subject !== 'All Subjects') {
+    const matchingSubject = list.filter((q) => matchesSubject(q.subject, filter.subject));
+    if (matchingSubject.length > 0) {
+      list = matchingSubject;
+    }
+  }
+
+  // Filter by Topic with smart token matching
+  if (filter?.topic && filter.topic !== 'All' && filter.topic !== 'All Topics') {
+    const matchingTopic = list.filter((q) => matchesTopic(q.topic, filter.topic));
+    if (matchingTopic.length > 0) {
+      list = matchingTopic;
+    }
   }
 
   if (filter?.status) {
-    list = list.filter(q => q.status === filter.status);
+    list = list.filter((q) => q.status === filter.status);
   }
 
   if (filter?.page) {
-    list = list.filter(q => q.page_number === filter.page);
+    list = list.filter((q) => q.page_number === filter.page);
+  }
+
+  // Exclude previously served IDs for non-repetition
+  if (filter?.excludeIds) {
+    const excludeSet = filter.excludeIds instanceof Set ? filter.excludeIds : new Set(filter.excludeIds);
+    const unserved = list.filter((q) => !excludeSet.has(q.id));
+    if (unserved.length >= (filter.count || 1)) {
+      list = unserved;
+    }
+  }
+
+  // Randomize questions if requested
+  if (filter?.randomize) {
+    for (let i = list.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [list[i], list[j]] = [list[j], list[i]];
+    }
   }
 
   if (filter?.count && filter.count > 0 && filter.count < list.length) {
@@ -4215,25 +4319,29 @@ export function getTNPSCAttempts(): TNPSCAttemptRecord[] {
 }
 
 export function convertTNPSCQuestionToQuestion(q: TNPSCQuestion, examName: string = 'TNPSC Group 4', year: number = 2011): Question {
+  const resolvedGroup = q.exam_group || (examName.toLowerCase().includes('group 2') ? 'Group 2' : 'Group 4');
+  const resolvedYear = q.exam_year || year;
+  const examTitle = `TNPSC ${resolvedGroup}`;
+
   const qText = q.question_text_ta
     ? `[தமிழ்]\n${q.question_text_ta}\n\n[English]\n${q.question_text_en}`
     : q.question_text_en;
 
   return {
     id: q.id,
-    exam_id: examName.toLowerCase().includes('group 2') ? 'exam-tnpsc-group2' : 'exam-tnpsc-group4',
+    exam_id: resolvedGroup === 'Group 2' ? 'exam-tnpsc-group2' : 'exam-tnpsc-group4',
     subject_id: q.subject === 'General English' ? 'subj-english' : 'subj-ga',
     topic_id: q.topic,
     difficulty: 8,
     question_text: qText,
     question_text_ta: q.question_text_ta || '',
     question_text_en: q.question_text_en,
-    passage_text: `${examName} (${year}) • Page ${q.page_number} • ${q.subject} – ${q.topic}`,
+    passage_text: `${examTitle} (${resolvedYear}) • Page ${q.page_number} • ${q.subject} – ${q.topic}`,
     options: [
-      { id: `${q.id}-A`, question_id: q.id, option_key: 'A', option_text: q.option_a, is_correct: q.correct_answer === 'A' },
-      { id: `${q.id}-B`, question_id: q.id, option_key: 'B', option_text: q.option_b, is_correct: q.correct_answer === 'B' },
-      { id: `${q.id}-C`, question_id: q.id, option_key: 'C', option_text: q.option_c, is_correct: q.correct_answer === 'C' },
-      { id: `${q.id}-D`, question_id: q.id, option_key: 'D', option_text: q.option_d, is_correct: q.correct_answer === 'D' },
+      { id: `${q.id}-A`, question_id: q.id, option_key: 'A', option_text: q.option_a, option_text_en: q.option_a, option_text_ta: q.option_a, is_correct: q.correct_answer === 'A' },
+      { id: `${q.id}-B`, question_id: q.id, option_key: 'B', option_text: q.option_b, option_text_en: q.option_b, option_text_ta: q.option_b, is_correct: q.correct_answer === 'B' },
+      { id: `${q.id}-C`, question_id: q.id, option_key: 'C', option_text: q.option_c, option_text_en: q.option_c, option_text_ta: q.option_c, is_correct: q.correct_answer === 'C' },
+      { id: `${q.id}-D`, question_id: q.id, option_key: 'D', option_text: q.option_d, option_text_en: q.option_d, option_text_ta: q.option_d, is_correct: q.correct_answer === 'D' },
     ],
     correct_answer: q.correct_answer,
     explanation: q.explanation,
@@ -4243,7 +4351,7 @@ export function convertTNPSCQuestionToQuestion(q: TNPSCQuestion, examName: strin
     is_ai_generated: false,
     status: 'approved',
     question_type: 'Multiple Choice',
-    exam_name: examName,
+    exam_name: examTitle,
     subject_name: q.subject,
     topic_name: q.topic,
   };

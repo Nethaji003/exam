@@ -244,6 +244,23 @@ export interface RevisionItem {
   question?: Question | PreviousYearQuestion;
 }
 
+export interface UserStreak {
+  user_id: string;
+  current_streak: number;
+  longest_streak: number;
+  last_activity_date: string | null; // YYYY-MM-DD in Asia/Kolkata
+  today_completed: boolean;
+  total_active_days: number;
+  days_since_last_activity?: number | null;
+  status_message?: string;
+  week_progress?: {
+    dayOfWeek: string;
+    date: string;
+    completed: boolean;
+    isToday: boolean;
+  }[];
+}
+
 export interface UserProgress {
   total_questions_solved: number;
   total_correct: number;
@@ -254,6 +271,9 @@ export interface UserProgress {
   current_sub_level: SubLevel;
   current_difficulty_level: DifficultyLevelId; // 1..25
   streak_count: number;
+  longest_streak?: number;
+  last_activity_date?: string | null;
+  today_completed?: boolean;
   pyqs_completed_count: number;
 }
 
@@ -277,6 +297,7 @@ export interface AIGenerationRequest {
   question_count: number;
   question_type: QuestionType;
   language: string;
+  isExplicitAITest?: boolean;
 }
 
 export interface PYQDataHealth {

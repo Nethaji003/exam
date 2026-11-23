@@ -19,8 +19,9 @@ import { ResultsView } from './views/ResultsView';
 import { PracticeEngine } from './components/practice/PracticeEngine';
 import { DBService } from './services/dbService';
 import { AIGeneratorService } from './services/aiGenerator';
-import { getTNPSCQuestions, TNPSCExamConfig } from './services/tnpscPaperData';
-import { Question, PreviousYearQuestion, PreviousYearPaper, MockTest, MainDifficultyLevel, SubLevel } from './types/database';
+import { getTNPSCQuestions, convertTNPSCQuestionToQuestion, TNPSCExamConfig } from './services/tnpscPaperData';
+import { QuestionPoolManager } from './services/questionPoolManager';
+import { Question, PreviousYearQuestion, PreviousYearPaper, MockTest, MainDifficultyLevel, SubLevel, QuestionPaper } from './types/database';
 import { Loader2, Sparkles, User, Shield, Award, CheckCircle } from 'lucide-react';
 import { useLanguage } from './contexts/LanguageContext';
 
@@ -54,18 +55,49 @@ export function App() {
     const subject = DBService.getSubjects().find((s) => s.id === subjectId);
 
     setIsGeneratingPractice(true);
-    setPracticeStatusMsg(`Generating verified questions for ${subject?.name || 'Subject'} - ${topic?.name || 'Topic'} (${mainLevel} ${subLevel})...`);
+    setPracticeStatusMsg(`Preparing verified questions for ${subject?.name || 'Subject'} - ${topic?.name || 'Topic'} (${mainLevel} ${subLevel})...`);
 
     try {
-      const existing = DBService.getQuestions({
-        subjectId,
-        topicId,
-        mainLevel,
-        subLevel,
-      });
+      const isTNPSC = examId.toLowerCase().includes('tnpsc');
+      let finalQuestions: Question[] = [];
 
-      let finalQuestions: Question[] = [...existing];
+      // 1. If TNPSC, draw authentic questions from paper archive
+      if (isTNPSC) {
+        const group = examId.includes('group2') ? 'Group 2' : 'Group 4';
+        const rawPool = getTNPSCQuestions({
+          examGroup: group,
+          subject: subject?.name,
+          topic: topic?.name,
+        });
 
+        if (rawPool.length > 0) {
+          const contextKey = `topic_practice_${examId}_${subjectId}_${topicId}`;
+          const selected = QuestionPoolManager.selectNonRepeating(rawPool, count, contextKey);
+          finalQuestions = selected.map((q) => {
+            const converted = convertTNPSCQuestionToQuestion(q, `TNPSC ${group}`, q.exam_year || 2011);
+            return QuestionPoolManager.randomizeQuestionOptions(converted);
+          });
+        }
+      }
+
+      // 2. Supplement from database question bank if needed
+      if (finalQuestions.length < count) {
+        const existing = DBService.getQuestions({
+          subjectId,
+          topicId,
+          mainLevel,
+          subLevel,
+        });
+
+        if (existing.length > 0) {
+          const contextKey = `topic_practice_db_${subjectId}_${topicId}`;
+          const needed = count - finalQuestions.length;
+          const chosenExisting = QuestionPoolManager.selectNonRepeating(existing, needed, contextKey);
+          finalQuestions = [...finalQuestions, ...chosenExisting.map((q) => QuestionPoolManager.randomizeQuestionOptions(q))];
+        }
+      }
+
+      // 3. Synthesize via AI if still needed
       if (finalQuestions.length < count) {
         const needed = count - finalQuestions.length;
         const generated = await AIGeneratorService.generateQuestions({
@@ -76,25 +108,26 @@ export function App() {
           sub_level: subLevel,
           question_count: needed,
           question_type: 'Multiple Choice',
-          language: language === 'Tamil' ? 'Tamil' : 'English',
+          language: language === 'Tamil' ? 'Tamil' : language === 'Both' ? 'Both' : 'English',
         });
 
         generated.forEach((q) => DBService.saveQuestion(q));
-        finalQuestions = [...finalQuestions, ...generated];
+        finalQuestions = [...finalQuestions, ...generated.map((q) => QuestionPoolManager.randomizeQuestionOptions(q))];
       }
 
-      const sliced = finalQuestions.slice(0, count);
+      const sliced = QuestionPoolManager.shuffle(finalQuestions.slice(0, count));
 
       setActiveSession({
         title: `${subject?.name || 'Subject'} – ${topic?.name || 'Topic'} (${mainLevel} ${subLevel})`,
         testType: 'Practice',
         questions: sliced,
         timeLimitMinutes: Math.max(5, Math.round(count * 1.5)),
-        negativeMarking: 0.25,
+        negativeMarking: isTNPSC ? 0 : 0.25,
         languageMode: language,
       });
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to prepare practice session:', err);
+      alert(err.message || 'Failed to prepare practice questions. Please check question availability.');
     } finally {
       setIsGeneratingPractice(false);
     }
@@ -102,11 +135,13 @@ export function App() {
 
   const handleStartPYQPaper = (paper: PreviousYearPaper, questions: PreviousYearQuestion[]) => {
     const paperQuestions = questions.length > 0 ? questions : DBService.getPYQQuestions(paper.id);
+    const nonRepeating = QuestionPoolManager.selectNonRepeating(paperQuestions, paperQuestions.length, `pyq_paper_${paper.id}`);
+    const randomized = nonRepeating.map((q) => QuestionPoolManager.randomizeQuestionOptions(q as any)) as unknown as PreviousYearQuestion[];
     
     setActiveSession({
       title: `${paper.exam_name} ${paper.year} (${paper.stage} – ${paper.shift})`,
       testType: 'PYQ Paper',
-      questions: paperQuestions,
+      questions: randomized,
       timeLimitMinutes: paper.duration || 60,
       negativeMarking: paper.negative_marking || 0,
       languageMode: language,
@@ -114,10 +149,15 @@ export function App() {
   };
 
   const handleStartMockTest = (test: MockTest, questions: Question[], languageMode?: 'Tamil' | 'English' | 'Both') => {
+    const pool = questions.length > 0 ? questions : DBService.getQuestions();
+    const count = test.total_questions || pool.length;
+    const selected = QuestionPoolManager.selectNonRepeating(pool, count, `mock_test_${test.id}`);
+    const randomized = selected.map((q) => QuestionPoolManager.randomizeQuestionOptions(q));
+
     setActiveSession({
       title: test.title,
       testType: 'Mock Test',
-      questions: questions.length > 0 ? questions : DBService.getQuestions(),
+      questions: randomized,
       timeLimitMinutes: test.duration || 60,
       negativeMarking: test.negative_marking || 0,
       languageMode: languageMode || language,
@@ -125,10 +165,11 @@ export function App() {
   };
 
   const handleStartDailyChallenge = (questions: Question[]) => {
+    const randomized = QuestionPoolManager.shuffle(questions).map((q) => QuestionPoolManager.randomizeQuestionOptions(q));
     setActiveSession({
       title: "Today's TNPSC Power Sprint (20 Questions)",
       testType: 'Daily Challenge',
-      questions: questions,
+      questions: randomized,
       timeLimitMinutes: 20,
       negativeMarking: 0,
       languageMode: language,
@@ -139,7 +180,7 @@ export function App() {
     setActiveSession({
       title: 'Targeted Revision Practice',
       testType: 'Revision',
-      questions: [q],
+      questions: [QuestionPoolManager.randomizeQuestionOptions(q)],
       timeLimitMinutes: 5,
       negativeMarking: 0,
       languageMode: language,
@@ -147,48 +188,75 @@ export function App() {
   };
 
   const handleStartTNPSCTest = (config: TNPSCExamConfig) => {
-    const rawQs = getTNPSCQuestions({
+    const targetGroup = config.examGroup || 'Group 4';
+    const targetYear = config.examYear ? Number(config.examYear) : undefined;
+    const contextKey = `tnpsc_${targetGroup}_${targetYear || 'all'}_${config.subject || 'all'}_${config.topic || 'all'}`;
+
+    // 1. Fetch authentic questions for the exact examGroup, examYear, subject, and topic
+    const rawCandidates = getTNPSCQuestions({
+      examGroup: targetGroup,
+      examYear: targetYear,
       subject: config.subject,
       topic: config.topic,
-      count: config.questionCount,
     });
 
-    const mapped: Question[] = rawQs.map((q) => {
-      const qText = q.question_text_ta
-        ? `[தமிழ்]\n${q.question_text_ta}\n\n[English]\n${q.question_text_en}`
-        : q.question_text_en;
+    let pool = [...rawCandidates];
 
-      return {
-        id: q.id,
-        exam_id: 'exam-tnpsc-group4',
-        subject_id: q.subject === 'General English' ? 'subj-english' : 'subj-ga',
-        topic_id: q.topic,
-        difficulty: 8,
-        question_text: qText,
-        passage_text: `TNPSC Group 4 (2011 Series A) • Page ${q.page_number} • ${q.subject} – ${q.topic}`,
-        options: [
-          { id: `${q.id}-A`, question_id: q.id, option_key: 'A', option_text: q.option_a, is_correct: q.correct_answer === 'A' },
-          { id: `${q.id}-B`, question_id: q.id, option_key: 'B', option_text: q.option_b, is_correct: q.correct_answer === 'B' },
-          { id: `${q.id}-C`, question_id: q.id, option_key: 'C', option_text: q.option_c, is_correct: q.correct_answer === 'C' },
-          { id: `${q.id}-D`, question_id: q.id, option_key: 'D', option_text: q.option_d, is_correct: q.correct_answer === 'D' },
-        ],
-        correct_answer: q.correct_answer,
-        explanation: `${q.explanation}${q.explanation_ta ? `\n\n[விளக்கம்]: ${q.explanation_ta}` : ''}`,
-        estimated_time: 54,
-        language: q.subject === 'General English' ? 'English' : 'Bilingual (Tamil/English)',
-        is_ai_generated: false,
-        status: 'approved',
-        question_type: 'Multiple Choice',
-        exam_name: 'TNPSC Group 4',
-        subject_name: q.subject,
-        topic_name: q.topic,
-      };
+    // If candidate pool has fewer questions than requested count, broaden pool
+    if (pool.length < config.questionCount) {
+      const extra = getTNPSCQuestions({ examGroup: targetGroup, examYear: targetYear });
+      const existingIds = new Set(pool.map((q) => q.id));
+      for (const q of extra) {
+        if (!existingIds.has(q.id)) {
+          pool.push(q);
+          existingIds.add(q.id);
+          if (pool.length >= config.questionCount) break;
+        }
+      }
+    }
+    if (pool.length < config.questionCount) {
+      const allGroup = getTNPSCQuestions({ examGroup: targetGroup });
+      const existingIds = new Set(pool.map((q) => q.id));
+      for (const q of allGroup) {
+        if (!existingIds.has(q.id)) {
+          pool.push(q);
+          existingIds.add(q.id);
+          if (pool.length >= config.questionCount) break;
+        }
+      }
+    }
+    if (pool.length < config.questionCount) {
+      const allExtra = getTNPSCQuestions();
+      const existingIds = new Set(pool.map((q) => q.id));
+      for (const q of allExtra) {
+        if (!existingIds.has(q.id)) {
+          pool.push(q);
+          existingIds.add(q.id);
+          if (pool.length >= config.questionCount) break;
+        }
+      }
+    }
+
+    // 2. Select non-repeating questions from pool
+    const selectedRaw = QuestionPoolManager.selectNonRepeating(pool, config.questionCount, contextKey);
+
+    // 3. Convert to Question model with proper metadata & randomize options
+    const mapped: Question[] = selectedRaw.map((q) => {
+      const converted = convertTNPSCQuestionToQuestion(
+        q,
+        `TNPSC ${targetGroup}`,
+        q.exam_year || targetYear || 2011
+      );
+      return QuestionPoolManager.randomizeQuestionOptions(converted);
     });
+
+    const displayYear = targetYear || selectedRaw[0]?.exam_year || 2011;
+    const testTitle = `TNPSC ${targetGroup} (${displayYear}) – ${
+      config.mode === 'full' ? 'Full Official Exam' : (config.topic || config.subject || 'Practice')
+    }`;
 
     setActiveSession({
-      title: `TNPSC Group 4 (2011 Series A, Code 901) – ${
-        config.mode === 'full' ? 'Full Official Exam (200 Qs)' : (config.topic || config.subject || 'Practice')
-      }`,
+      title: testTitle,
       testType: 'Mock Test',
       questions: mapped,
       timeLimitMinutes: config.durationMinutes,
@@ -287,6 +355,15 @@ export function App() {
         {currentTab === 'group2' && (
           <TNPSCGroup2View
             onTakeMockTest={() => setCurrentTab('mock-tests')}
+            onStartPaperTest={(paper) =>
+              handleStartTNPSCTest({
+                mode: 'full',
+                questionCount: paper.total_questions || 200,
+                durationMinutes: paper.duration_minutes || 180,
+                examGroup: 'Group 2',
+                examYear: paper.exam_year,
+              })
+            }
           />
         )}
 

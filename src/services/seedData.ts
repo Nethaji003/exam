@@ -34,6 +34,9 @@ export const SEED_EXAMS: Exam[] = [
 ];
 
 export const SEED_SUBJECTS: Subject[] = [
+  { id: 'subj-gs', name: 'General Studies', code: 'GS', description: 'Indian Polity, History & Culture of India & TN, Geography, Economy, Science' },
+  { id: 'subj-mental-ability', name: 'Aptitude & Mental Ability', code: 'APTITUDE', description: 'Simplification, Percentage, Ratio & Proportion, Time & Work, HCF & LCM' },
+  { id: 'subj-tamil', name: 'General Tamil (பொதுத் தமிழ்)', code: 'TAMIL', description: 'பகுதி அ (இலக்கணம்), பகுதி ஆ (இலக்கியம்), பகுதி இ (தமிழ் அறிஞர்கள்)' },
   { id: 'subj-quant', name: 'Quantitative Aptitude', code: 'QUANT', description: 'Numerical ability, data interpretation, arithmetic & algebra' },
   { id: 'subj-reasoning', name: 'Reasoning Ability', code: 'REASONING', description: 'Logical reasoning, analytical puzzles, seating arrangement, syllogism' },
   { id: 'subj-english', name: 'English Language', code: 'ENGLISH', description: 'Grammar, vocabulary, reading comprehension, cloze test' },
@@ -43,6 +46,25 @@ export const SEED_SUBJECTS: Subject[] = [
 ];
 
 export const SEED_TOPICS: Topic[] = [
+  // TNPSC General Studies Topics
+  { id: 'top-tnpsc-polity', subject_id: 'subj-gs', name: 'Indian Polity & Constitution', code: 'TNPSC_POLITY', description: 'Preamble, Fundamental Rights, Parliament, Judiciary, Constitutional Amendments' },
+  { id: 'top-tnpsc-history', subject_id: 'subj-gs', name: 'History and Culture of India and Tamil Nadu', code: 'TNPSC_HISTORY', description: 'Indus Valley, Sangam Age, Cholas, Pallavas, National Movement' },
+  { id: 'top-tnpsc-geography', subject_id: 'subj-gs', name: 'Geography of India & Tamil Nadu', code: 'TNPSC_GEO', description: 'Rivers, Western Ghats, monsoon, minerals, biosphere reserves' },
+  { id: 'top-tnpsc-science', subject_id: 'subj-gs', name: 'General Science (Physics, Chemistry, Biology)', code: 'TNPSC_SCIENCE', description: 'Scientific laws, human physiology, vitamins, ecology & environmental science' },
+  { id: 'top-tnpsc-movements', subject_id: 'subj-gs', name: 'History, Culture, Heritage and Socio-Political Movements in TN', code: 'TNPSC_MOVEMENTS', description: 'Self-Respect Movement, Justice Party, Periyar, Annadurai, Dravidian heritage' },
+
+  // TNPSC Aptitude & Mental Ability Topics
+  { id: 'top-tnpsc-simplification', subject_id: 'subj-mental-ability', name: 'Simplification', code: 'SIMPLIFICATION', description: 'BODMAS, square roots, series progression, number sequences' },
+  { id: 'top-tnpsc-percentage', subject_id: 'subj-mental-ability', name: 'Percentage', code: 'PERCENTAGE', description: 'Percentage calculations, profit and loss, marks analysis' },
+  { id: 'top-tnpsc-hcf-lcm', subject_id: 'subj-mental-ability', name: 'Highest Common Factor (HCF) & LCM', code: 'HCF_LCM', description: 'HCF and LCM of integers, fractions, algebraic expressions' },
+  { id: 'top-tnpsc-ratio', subject_id: 'subj-mental-ability', name: 'Ratio and Proportion', code: 'RATIO_PROP', description: 'Direct and inverse proportions, mixtures and age ratios' },
+  { id: 'top-tnpsc-time-work', subject_id: 'subj-mental-ability', name: 'Time and Work', code: 'TIME_WORK', description: 'Work rates, efficiency, pipes and cisterns' },
+  { id: 'top-tnpsc-interest', subject_id: 'subj-mental-ability', name: 'Simple Interest & Compound Interest', code: 'INTEREST', description: 'Annual interest, compound frequency, difference formulas' },
+
+  // TNPSC General Tamil Topics
+  { id: 'top-tamil-grammar', subject_id: 'subj-tamil', name: 'பகுதி அ - இலக்கணம் (Grammar)', code: 'TAMIL_GRAMMAR', description: 'எழுத்து, சொல், பொருள், யாப்பு, அணி இலக்கணம் மற்றும் பிரித்தெழுதுதல்' },
+  { id: 'top-tamil-lit', subject_id: 'subj-tamil', name: 'பகுதி ஆ - இலக்கியம் (Literature)', code: 'TAMIL_LIT', description: 'திருக்குறள், நாலடியார், ஐம்பெருங்காப்பியங்கள், பக்தி இலக்கியம்' },
+  { id: 'top-tamil-scholars', subject_id: 'subj-tamil', name: 'பகுதி இ - தமிழ் அறிஞர்களும் தமிழ்த் தொண்டும்', code: 'TAMIL_SCHOLARS', description: 'பாரதியார், பாரதிதாசன், தந்தை பெரியார், மறைமலையடிகள் தமிழ்த் தொண்டு' },
   // Quant Topics
   { id: 'top-percentage', subject_id: 'subj-quant', name: 'Percentage', code: 'PERCENTAGE', description: 'Base change, successive percentage, population & voting problems' },
   { id: 'top-profit-loss', subject_id: 'subj-quant', name: 'Profit & Loss', code: 'PROFIT_LOSS', description: 'Markup percentage, discount, dishonest seller & marked price' },

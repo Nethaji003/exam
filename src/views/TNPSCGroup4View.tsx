@@ -55,7 +55,9 @@ export const TNPSCGroup4View: React.FC<TNPSCGroup4ViewProps> = ({
       subject: selectedMode === 'full' ? undefined : selectedSubject,
       topic: selectedMode === 'topic' && selectedTopic !== 'All' ? selectedTopic : undefined,
       questionCount: count,
-      durationMinutes: duration
+      durationMinutes: duration,
+      examGroup: 'Group 4',
+      examYear: 2011,
     });
   };
 

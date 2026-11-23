@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   GraduationCap,
   Flame,
@@ -25,6 +25,7 @@ import {
   LogOut,
 } from 'lucide-react';
 import { DBService } from '../../services/dbService';
+import { StreakService } from '../../services/streakService';
 import { useLanguage, LanguageMode } from '../../contexts/LanguageContext';
 
 interface NavbarProps {
@@ -47,6 +48,13 @@ export const Navbar: React.FC<NavbarProps> = ({
   const { language, setLanguage, t } = useLanguage();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isLoggedIn, setIsLoggedIn] = useState(true);
+  const [streak, setStreak] = useState(StreakService.getStoredStreak('student-1'));
+
+  useEffect(() => {
+    StreakService.fetchStreak('student-1').then(setStreak).catch(() => {});
+    const unsubscribe = StreakService.addListener((updated) => setStreak(updated));
+    return () => unsubscribe();
+  }, []);
 
   const userProgress = DBService.getUserProgress();
 
@@ -164,13 +172,14 @@ export const Navbar: React.FC<NavbarProps> = ({
             <div
               className="hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-bold"
               style={{
-                background: 'rgba(212,175,55,0.08)',
-                border: '1px solid rgba(212,175,55,0.2)',
-                color: '#E6C66D',
+                background: streak.today_completed ? 'rgba(39,174,96,0.15)' : 'rgba(212,175,55,0.08)',
+                border: streak.today_completed ? '1px solid rgba(39,174,96,0.35)' : '1px solid rgba(212,175,55,0.2)',
+                color: streak.today_completed ? '#2ECC71' : '#E6C66D',
               }}
+              title={`Active Streak: ${streak.current_streak} days | Longest: ${streak.longest_streak} days`}
             >
-              <Flame className="w-3.5 h-3.5" style={{ fill: '#D4AF37' }} />
-              <span>{userProgress.streak_count} {t.daysStreak}</span>
+              <Flame className="w-3.5 h-3.5" style={{ fill: streak.today_completed ? '#2ECC71' : '#D4AF37' }} />
+              <span>{streak.current_streak} {t.daysStreak}</span>
             </div>
 
             {/* Global Language Selector */}

@@ -3,6 +3,7 @@ import { Question, PreviousYearQuestion, TestAttemptResult } from '../../types/d
 import { Timer, Bookmark, ChevronLeft, ChevronRight, CheckCircle, Flag, RotateCcw, AlertTriangle, Send, Sparkles, BookOpen } from 'lucide-react';
 import { DBService } from '../../services/dbService';
 import { saveTNPSCAttempt } from '../../services/tnpscPaperData';
+import { StreakService } from '../../services/streakService';
 import { TestResultModal } from './TestResultModal';
 import { useLanguage } from '../../contexts/LanguageContext';
 import confetti from 'canvas-confetti';
@@ -175,6 +176,11 @@ export const PracticeEngine: React.FC<PracticeEngineProps> = ({
     };
 
     DBService.saveTestAttempt(resultObj);
+
+    // Record qualifying activity for daily streak if user answered questions
+    if (answeredCount > 0) {
+      StreakService.recordActivity('student-1', testType, title);
+    }
 
     if (title.includes('TNPSC') || testType === 'Mock Test') {
       saveTNPSCAttempt({

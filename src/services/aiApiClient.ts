@@ -8,16 +8,23 @@ import {
   TestAttemptResult,
 } from '../types/database';
 import { DBService } from './dbService';
+import { QuestionPoolManager } from './questionPoolManager';
+import { getApiBaseUrl } from '../config/apiConfig';
 
-const API_BASE = 'http://localhost:8080/api';
+const getApiBase = (): string => {
+  const base = getApiBaseUrl();
+  return base ? `${base}/api` : (import.meta.env.DEV ? 'http://localhost:8080/api' : '/api');
+};
 
 export class AIApiClient {
   private static async request<T>(endpoint: string, options?: RequestInit): Promise<T> {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 6000);
+    const apiBase = getApiBase();
 
     try {
-      const res = await fetch(`${API_BASE}${endpoint}`, {
+      const targetUrl = `${apiBase}${endpoint.startsWith('/') ? endpoint : '/' + endpoint}`;
+      const res = await fetch(targetUrl, {
         ...options,
         signal: controller.signal,
         headers: {
@@ -376,22 +383,24 @@ export class AIApiClient {
       q.question_text.toLowerCase().includes(payload.sectionName.toLowerCase())
     );
 
-    const baseQuestions = sectionQuestions.length >= 5 ? sectionQuestions : allQuestions;
+    const baseQuestions = sectionQuestions.length >= 3 ? sectionQuestions : allQuestions;
     const count = payload.questionCount || 10;
-    const questions: Question[] = [];
+    const contextKey = `ai_mock_fallback_${payload.sectionName}_${payload.topicName || 'all'}`;
 
-    for (let i = 0; i < count; i++) {
-      const src = baseQuestions[i % baseQuestions.length];
+    // Select non-repeating questions from pool across tests
+    const selected = QuestionPoolManager.selectNonRepeating(baseQuestions, count, contextKey);
+
+    const questions: Question[] = selected.map((src, i) => {
       const qCopy: Question = {
         ...src,
-        id: `ai-gen-mock-${Date.now()}-${i}`,
+        id: `ai-gen-mock-${Date.now()}-${i}-${src.id}`,
         question_text: `[AI ${payload.sectionName} Practice Q${i + 1}] ${src.question_text}`,
         is_ai_generated: true,
         subject_name: payload.sectionName,
         topic_name: payload.topicName || src.topic_name,
       };
-      questions.push(qCopy);
-    }
+      return QuestionPoolManager.randomizeQuestionOptions(qCopy);
+    });
 
     return { testId: Date.now(), questions };
   }

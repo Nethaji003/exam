@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { AIGenerateMockTestModal } from '../components/ai/AIGenerateMockTestModal';
 import { getTNPSCQuestions, convertTNPSCQuestionToQuestion } from '../services/tnpscPaperData';
+import { QuestionPoolManager } from '../services/questionPoolManager';
 import { AIGeneratorService } from '../services/aiGenerator';
 import { useLanguage } from '../contexts/LanguageContext';
 
@@ -272,50 +273,74 @@ export const MockTestsView: React.FC<MockTestsViewProps> = ({ onStartMockTest })
       let pyqQuestions: Question[] = [];
       if (pyqTargetCount > 0) {
         if (isTNPSC) {
-          // Fetch from authentic TNPSC 200 questions pool
-          let rawTNPSC = getTNPSCQuestions({
+          const normExamGroup = selectedExamGroup.includes('Group 2') ? 'Group 2' : 'Group 4';
+          const normYear = selectedYear !== 'All Years' ? Number(selectedYear) : undefined;
+          const contextKey = `mock_custom_${normExamGroup}_${selectedYear}_${selectedSubject}_${selectedTopic}`;
+
+          // Fetch from authentic TNPSC questions pool matching group, year, subject and topic
+          let candidateTNPSC = getTNPSCQuestions({
+            examGroup: normExamGroup,
+            examYear: normYear,
             subject: selectedSubject !== 'All Subjects' ? selectedSubject : undefined,
             topic: selectedTopic !== 'All Topics' ? selectedTopic : undefined,
           });
 
           // If topic has fewer questions than needed, fallback to same subject to fulfill exact count
-          if (rawTNPSC.length < pyqTargetCount) {
+          if (candidateTNPSC.length < pyqTargetCount) {
             const extra = getTNPSCQuestions({
+              examGroup: normExamGroup,
+              examYear: normYear,
               subject: selectedSubject !== 'All Subjects' ? selectedSubject : undefined,
             });
-            const existingIds = new Set(rawTNPSC.map((q) => q.id));
+            const existingIds = new Set(candidateTNPSC.map((q) => q.id));
             for (const q of extra) {
               if (!existingIds.has(q.id)) {
-                rawTNPSC.push(q);
+                candidateTNPSC.push(q);
                 existingIds.add(q.id);
-                if (rawTNPSC.length >= pyqTargetCount) break;
+                if (candidateTNPSC.length >= pyqTargetCount) break;
               }
             }
           }
 
-          // If still fewer (e.g. requested 200 questions from a 100-q subject), draw from all TNPSC
-          if (rawTNPSC.length < pyqTargetCount) {
+          // If still fewer, draw from all papers of this exam group
+          if (candidateTNPSC.length < pyqTargetCount) {
+            const allGroupRaw = getTNPSCQuestions({ examGroup: normExamGroup });
+            const existingIds = new Set(candidateTNPSC.map((q) => q.id));
+            for (const q of allGroupRaw) {
+              if (!existingIds.has(q.id)) {
+                candidateTNPSC.push(q);
+                existingIds.add(q.id);
+                if (candidateTNPSC.length >= pyqTargetCount) break;
+              }
+            }
+          }
+
+          // If still fewer, draw from all available authentic TNPSC papers
+          if (candidateTNPSC.length < pyqTargetCount) {
             const allRaw = getTNPSCQuestions();
-            const existingIds = new Set(rawTNPSC.map((q) => q.id));
+            const existingIds = new Set(candidateTNPSC.map((q) => q.id));
             for (const q of allRaw) {
               if (!existingIds.has(q.id)) {
-                rawTNPSC.push(q);
+                candidateTNPSC.push(q);
                 existingIds.add(q.id);
-                if (rawTNPSC.length >= pyqTargetCount) break;
+                if (candidateTNPSC.length >= pyqTargetCount) break;
               }
             }
           }
 
+          // Select non-repeating questions from pool
+          const chosenRaw = QuestionPoolManager.selectNonRepeating(candidateTNPSC, pyqTargetCount, contextKey);
+
           // Convert to Question objects with proper labels
-          pyqQuestions = rawTNPSC.slice(0, pyqTargetCount).map((q) => {
+          pyqQuestions = chosenRaw.map((q) => {
             const converted = convertTNPSCQuestionToQuestion(
               q,
               selectedExamGroup,
-              selectedYear !== 'All Years' ? Number(selectedYear) : 2011
+              q.exam_year || (selectedYear !== 'All Years' ? Number(selectedYear) : 2011)
             );
             return {
               ...converted,
-              passage_text: `[Official PYQ Archive • ${selectedExamGroup} ${selectedYear !== 'All Years' ? selectedYear : '2011'}] Page ${q.page_number} • ${q.subject}`,
+              passage_text: `[Official PYQ Archive • ${q.exam_group || selectedExamGroup} ${q.exam_year || (selectedYear !== 'All Years' ? selectedYear : '2011')}] Page ${q.page_number} • ${q.subject}`,
               is_ai_generated: false,
             };
           });
@@ -329,11 +354,14 @@ export const MockTestsView: React.FC<MockTestsViewProps> = ({ onStartMockTest })
           if (selectedTopic !== 'All Topics') {
             filtered = filtered.filter((q) => q.topic_id?.toLowerCase().includes(selectedTopic.toLowerCase()));
           }
-          if (filtered.length < pyqTargetCount) {
+          if (filtered.length === 0) {
             filtered = allDbPYQ;
           }
 
-          pyqQuestions = filtered.slice(0, pyqTargetCount).map((q, idx) => ({
+          const contextKey = `mock_custom_bank_${selectedExamGroup}_${selectedSubject}_${selectedTopic}`;
+          const chosenDbPYQ = QuestionPoolManager.selectNonRepeating(filtered, pyqTargetCount, contextKey);
+
+          pyqQuestions = chosenDbPYQ.map((q, idx) => ({
             id: `pyq-${q.id}-${idx}`,
             exam_id: selectedExamGroup.includes('SBI') ? 'exam-sbi-po' : 'exam-ssc-cgl',
             subject_id: q.subject_id || 'subj-quant',
@@ -365,14 +393,15 @@ export const MockTestsView: React.FC<MockTestsViewProps> = ({ onStartMockTest })
       let aiQuestions: Question[] = [];
       if (aiTargetCount > 0) {
         aiQuestions = await AIGeneratorService.generateQuestions({
-          exam_id: isTNPSC ? 'exam-tnpsc-group4' : 'exam-sbi-po',
-          subject_id: selectedSubject !== 'All Subjects' ? selectedSubject : 'subj-quant',
-          topic_id: selectedTopic !== 'All Topics' ? selectedTopic : 'topic-percentage',
+          exam_id: isTNPSC ? (selectedExamGroup.includes('Group 2') ? 'exam-tnpsc-group2' : 'exam-tnpsc-group4') : 'exam-sbi-po',
+          subject_id: selectedSubject !== 'All Subjects' ? selectedSubject : 'subj-gs',
+          topic_id: selectedTopic !== 'All Topics' ? selectedTopic : 'General Studies',
           main_level: 'Medium',
           sub_level: 'L3',
           question_count: aiTargetCount,
           question_type: 'Multiple Choice',
           language: languageMode,
+          isExplicitAITest: activeMode === 'ai_generated',
         });
 
         // Tag AI questions
@@ -390,9 +419,12 @@ export const MockTestsView: React.FC<MockTestsViewProps> = ({ onStartMockTest })
       // If for any unforeseen reason the combined total is less than requested, supplement from available questions
       if (finalQuestions.length < questionCount) {
         const needed = questionCount - finalQuestions.length;
-        const backupRaw = getTNPSCQuestions();
-        const backupConverted = backupRaw.slice(0, needed).map((q, idx) => ({
-          ...convertTNPSCQuestionToQuestion(q, selectedExamGroup, 2011),
+        const normExamGroup = selectedExamGroup.includes('Group 2') ? 'Group 2' : 'Group 4';
+        const backupRaw = getTNPSCQuestions({ examGroup: normExamGroup });
+        const unusedBackup = backupRaw.filter((b) => !finalQuestions.some((f) => f.id === b.id));
+        const poolToUse = unusedBackup.length >= needed ? unusedBackup : backupRaw;
+        const backupConverted = QuestionPoolManager.shuffle(poolToUse).slice(0, needed).map((q, idx) => ({
+          ...convertTNPSCQuestionToQuestion(q, selectedExamGroup, q.exam_year || 2011),
           id: `suppl-${Date.now()}-${idx}`,
         }));
         finalQuestions = [...finalQuestions, ...backupConverted];
@@ -400,6 +432,11 @@ export const MockTestsView: React.FC<MockTestsViewProps> = ({ onStartMockTest })
 
       // Strictly slice to exact question count
       finalQuestions = finalQuestions.slice(0, questionCount);
+
+      // Randomize question sequence and option order (preserving Tamil + English mappings)
+      finalQuestions = QuestionPoolManager.shuffle(finalQuestions).map((q) =>
+        QuestionPoolManager.randomizeQuestionOptions(q)
+      );
 
       if (finalQuestions.length !== questionCount) {
         throw new Error(`Expected exactly ${questionCount} questions, but generated ${finalQuestions.length}.`);
@@ -437,7 +474,10 @@ export const MockTestsView: React.FC<MockTestsViewProps> = ({ onStartMockTest })
   // Launch standard catalog test
   const handleLaunchCatalogTest = (test: MockTest) => {
     const questions = DBService.getQuestions({ examId: test.exam_id });
-    onStartMockTest(test, questions.length >= 5 ? questions : DBService.getQuestions(), languageMode);
+    const pool = questions.length >= 5 ? questions : DBService.getQuestions();
+    const selected = QuestionPoolManager.selectNonRepeating(pool, test.total_questions || 25, `catalog_${test.id}`);
+    const randomized = selected.map((q) => QuestionPoolManager.randomizeQuestionOptions(q));
+    onStartMockTest(test, randomized, languageMode);
     setSelectedTestModal(null);
   };
 

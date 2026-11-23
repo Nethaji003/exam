@@ -20,7 +20,7 @@ import java.util.*;
 
 @RestController
 @RequestMapping("/api/ai")
-@CrossOrigin(origins = {"http://localhost:5173", "http://localhost:5174"}, allowCredentials = "true")
+@CrossOrigin(originPatterns = {"http://localhost:*", "http://127.0.0.1:*", "https://*.vercel.app"}, allowCredentials = "true")
 public class AIController {
 
     private final AIAnalysisService analysisService;

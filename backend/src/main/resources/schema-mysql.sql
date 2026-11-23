@@ -194,6 +194,35 @@ CREATE TABLE IF NOT EXISTS ai_tutor_sessions (
     INDEX idx_student_tutor (student_id, section_name)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- --------------------------------------------------------------------
+-- 10. User Streaks Table (Daily Activity & Streak Tracking in Asia/Kolkata)
+-- --------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS user_streaks (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    user_id VARCHAR(100) NOT NULL UNIQUE,
+    current_streak INT NOT NULL DEFAULT 0,
+    longest_streak INT NOT NULL DEFAULT 0,
+    last_activity_date DATE,
+    last_activity_timestamp DATETIME,
+    total_active_days INT NOT NULL DEFAULT 0,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_user_streak (user_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- --------------------------------------------------------------------
+-- 11. User Streak Activities Table (Historical Activity Logs)
+-- --------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS user_streak_activities (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    user_id VARCHAR(100) NOT NULL,
+    activity_date DATE NOT NULL,
+    activity_type VARCHAR(50) NOT NULL,
+    activity_details VARCHAR(255),
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_user_activity_date (user_id, activity_date)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 -- ====================================================================
 -- SEED DATA: Verified Official TNPSC Group 2 & Group 4 Question Papers
 -- ====================================================================

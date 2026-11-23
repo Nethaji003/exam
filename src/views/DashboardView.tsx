@@ -1,11 +1,12 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   CheckCircle2, Clock, Flame, Award, TrendingUp, AlertTriangle,
   ArrowRight, BookOpen, Target, Sparkles, ChevronRight, BarChart2,
   Layers, FileCheck, Brain, Shield, Play, Calendar, Star, Users
 } from 'lucide-react';
 import { DBService } from '../services/dbService';
-import { MainDifficultyLevel, SubLevel, Question } from '../types/database';
+import { MainDifficultyLevel, SubLevel, Question, UserStreak } from '../types/database';
+import { StreakService } from '../services/streakService';
 import { AIWeakSectionsPanel } from '../components/ai/AIWeakSectionsPanel';
 import { AIPersonalTutorModal } from '../components/ai/AIPersonalTutorModal';
 import { AIGenerateMockTestModal } from '../components/ai/AIGenerateMockTestModal';
@@ -40,6 +41,13 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const { t, isTamil, isBoth } = useLanguage();
   const [tutorSession, setTutorSession] = useState<{ section: string; topic: string } | null>(null);
   const [mockGenSession, setMockGenSession] = useState<{ section: string; topic: string } | null>(null);
+  const [streak, setStreak] = useState<UserStreak>(StreakService.getStoredStreak('student-1'));
+
+  useEffect(() => {
+    StreakService.fetchStreak('student-1').then(setStreak).catch(() => {});
+    const unsubscribe = StreakService.addListener((updated) => setStreak(updated));
+    return () => unsubscribe();
+  }, []);
 
   const userProgress = DBService.getUserProgress();
   const testAttempts = DBService.getTestAttempts();
@@ -174,11 +182,18 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         </div>
 
         <div className="stat-card">
-          <span className="text-[11px] font-semibold uppercase block mb-1" style={{ color: '#A7A7A7' }}>
-            {t.daysStreak}
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-[11px] font-semibold uppercase" style={{ color: '#A7A7A7' }}>
+              {t.daysStreak}
+            </span>
+            <span className="text-[10px] font-bold text-amber-400/80">
+              Best: {streak.longest_streak}d
+            </span>
+          </div>
+          <p className="text-2xl font-extrabold text-amber-500">{streak.current_streak} Days</p>
+          <span className={`text-[11px] font-semibold ${streak.today_completed ? 'text-emerald-400' : 'text-amber-400'}`}>
+            {streak.today_completed ? 'Completed Today 🔥' : 'Pending Today ⏳'}
           </span>
-          <p className="text-2xl font-extrabold text-amber-500">{userProgress.streak_count} Days</p>
-          <span className="text-[11px] text-amber-400 font-semibold">Streak Active 🔥</span>
         </div>
       </div>
 

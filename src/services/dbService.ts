@@ -29,6 +29,7 @@ import {
   SEED_MOCK_TESTS,
   SEED_QUESTION_PAPERS,
 } from './seedData';
+import { StreakService } from './streakService';
 
 const STORAGE_KEYS = {
   EXAMS: 'examprep_exams',
@@ -310,7 +311,8 @@ export class DBService {
 
   // --- USER PROGRESS & ATTEMPTS ---
   static getUserProgress(): UserProgress {
-    return getItem<UserProgress>(STORAGE_KEYS.USER_PROGRESS, {
+    const storedStreak = StreakService.getStoredStreak('student-1');
+    const defaultProgress: UserProgress = {
       total_questions_solved: 38,
       total_correct: 30,
       total_wrong: 8,
@@ -319,9 +321,19 @@ export class DBService {
       current_main_level: 'Medium',
       current_sub_level: 'L3',
       current_difficulty_level: 8, // Medium L3
-      streak_count: 5,
+      streak_count: storedStreak.current_streak,
+      longest_streak: storedStreak.longest_streak,
+      last_activity_date: storedStreak.last_activity_date,
+      today_completed: storedStreak.today_completed,
       pyqs_completed_count: 2,
-    });
+    };
+    const progress = getItem<UserProgress>(STORAGE_KEYS.USER_PROGRESS, defaultProgress);
+    // Keep streak synchronized with real streak engine (Asia/Kolkata timezone)
+    progress.streak_count = storedStreak.current_streak;
+    progress.longest_streak = storedStreak.longest_streak;
+    progress.last_activity_date = storedStreak.last_activity_date;
+    progress.today_completed = storedStreak.today_completed;
+    return progress;
   }
 
   static updateUserLevel(mainLevel: MainDifficultyLevel, subLevel: SubLevel): void {
@@ -354,6 +366,20 @@ export class DBService {
         ((progress.total_correct / progress.total_questions_solved) * 100).toFixed(2)
       );
     }
+
+    // Update daily streak if user answered questions (qualifying activity)
+    const questionsAnswered = result.correct_count + result.wrong_count;
+    if (questionsAnswered > 0) {
+      StreakService.recordActivity('student-1', result.test_type, result.test_title).then((streak) => {
+        const p = this.getUserProgress();
+        p.streak_count = streak.current_streak;
+        p.longest_streak = streak.longest_streak;
+        p.last_activity_date = streak.last_activity_date;
+        p.today_completed = streak.today_completed;
+        setItem(STORAGE_KEYS.USER_PROGRESS, p);
+      });
+    }
+
     setItem(STORAGE_KEYS.USER_PROGRESS, progress);
   }
 

@@ -11,9 +11,10 @@ import { PDFViewerModal } from '../components/common/PDFViewerModal';
 interface TNPSCGroup2ViewProps {
   onStartPractice?: (subjectId: string, topicId: string) => void;
   onTakeMockTest?: () => void;
+  onStartPaperTest?: (paper: QuestionPaper) => void;
 }
 
-export const TNPSCGroup2View: React.FC<TNPSCGroup2ViewProps> = ({ onTakeMockTest }) => {
+export const TNPSCGroup2View: React.FC<TNPSCGroup2ViewProps> = ({ onTakeMockTest, onStartPaperTest }) => {
   const { t, isTamil, isBoth } = useLanguage();
   const [selectedYear, setSelectedYear] = useState<string>('All');
   const [selectedStage, setSelectedStage] = useState<string>('All');
@@ -211,6 +212,15 @@ export const TNPSCGroup2View: React.FC<TNPSCGroup2ViewProps> = ({ onTakeMockTest
               </span>
 
               <div className="flex items-center gap-2">
+                {onStartPaperTest && (
+                  <button
+                    onClick={() => onStartPaperTest(paper)}
+                    className="btn-gold text-xs px-3 py-1.5 font-bold"
+                  >
+                    <Play className="w-3.5 h-3.5" />
+                    {isTamil ? 'தேர்வு தொடங்கு' : 'Start Test'}
+                  </button>
+                )}
                 <button
                   onClick={(e) => { e.stopPropagation(); setViewingPaper(paper); }}
                   className="btn-gold-outline text-xs px-3 py-1.5"

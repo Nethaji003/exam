@@ -1,5 +1,7 @@
 import { Question, AIGenerationRequest, QuestionOption, DifficultyLevelId, MainDifficultyLevel, SubLevel } from '../types/database';
 import { DBService } from './dbService';
+import { QuestionPoolManager } from './questionPoolManager';
+import { getEndpointUrl, getApiBaseUrl } from '../config/apiConfig';
 
 export class AIGeneratorService {
   /**
@@ -10,14 +12,38 @@ export class AIGeneratorService {
     const subjects = DBService.getSubjects();
     const topics = DBService.getTopics();
 
-    const targetExam = exams.find((e) => e.id === request.exam_id) || exams[0];
-    const targetSubject = subjects.find((s) => s.id === request.subject_id) || subjects[0];
-    const targetTopic = topics.find((t) => t.id === request.topic_id) || topics[0];
+    const targetExam =
+      exams.find(
+        (e) =>
+          e.id === request.exam_id ||
+          e.name.toLowerCase().includes(request.exam_id.toLowerCase()) ||
+          request.exam_id.toLowerCase().includes(e.name.toLowerCase())
+      ) || exams[0];
+
+    const targetSubject =
+      subjects.find(
+        (s) =>
+          s.id === request.subject_id ||
+          s.name.toLowerCase() === request.subject_id.toLowerCase() ||
+          request.subject_id.toLowerCase().includes(s.name.toLowerCase()) ||
+          s.name.toLowerCase().includes(request.subject_id.toLowerCase())
+      ) || { id: 'subj-gs', name: request.subject_id || 'General Studies', code: 'GS' };
+
+    const targetTopic =
+      topics.find(
+        (t) =>
+          t.id === request.topic_id ||
+          t.name.toLowerCase() === request.topic_id.toLowerCase() ||
+          request.topic_id.toLowerCase().includes(t.name.toLowerCase()) ||
+          t.name.toLowerCase().includes(request.topic_id.toLowerCase())
+      ) || { id: 'top-general', name: request.topic_id || 'General Exam Pattern', code: 'GENERAL', subject_id: targetSubject.id };
+
     const requestedLanguage = request.language || 'Both';
 
     // 1. Try calling Spring Boot backend REST API
     try {
-      const res = await fetch('http://localhost:8080/api/ai/generate-mock-test', {
+      const endpointUrl = getEndpointUrl('/api/ai/generate-mock-test');
+      const res = await fetch(endpointUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -143,12 +169,22 @@ export class AIGeneratorService {
             return apiQuestions;
           }
         }
+      } else {
+        const errorText = await res.text().catch(() => '');
+        if (request.isExplicitAITest) {
+          throw new Error(`AI Backend returned error HTTP ${res.status}: ${errorText || 'Failed to generate questions'}`);
+        }
       }
-    } catch (e) {
-      // Backend is starting up or offline — use high-precision bilingual fallback
+    } catch (e: any) {
+      if (request.isExplicitAITest) {
+        throw new Error(
+          `AI Question Generator API unavailable (${e.message || 'Cannot reach ' + (getApiBaseUrl() || 'backend')}). Please ensure the Spring Boot backend server is running and OpenAI API key is configured.`
+        );
+      }
+      console.warn('AI generator backend call failed, falling back to dynamic synthesis:', e.message);
     }
 
-    // 2. High-precision Topic-Specific AI Generator fallback with 100% Bilingual Tamil & English content
+    // 2. High-precision Topic-Specific AI Generator with 100% Bilingual Tamil & English content
     return this.generateSmartFallbackQuestions(request, targetExam.name, targetSubject.name, targetTopic.name);
   }
 
@@ -290,10 +326,12 @@ export class AIGeneratorService {
       },
     ];
 
+    const sessionSeed = Math.floor(Math.random() * 50) + 1;
+
     for (let i = 0; i < count; i++) {
-      const qIndex = i + 1;
+      const qIndex = i + 1 + sessionSeed;
       const qId = `ai-gen-${Date.now()}-${i}`;
-      const correctIdx = i % 4; // Cycles A, B, C, D evenly
+      const correctIdx = (i + sessionSeed) % 4; // Cycles A, B, C, D evenly
       const correctKey = String.fromCharCode(65 + correctIdx);
 
       let questionTextEn = '';
