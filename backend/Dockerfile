@@ -4,7 +4,7 @@
 # ── Stage 1: Build JAR with Maven & Eclipse Temurin JDK 17 ──
 FROM maven:3.9.6-eclipse-temurin-17 AS builder
 WORKDIR /app
-
+COPY settings.xml /root/.m2/settings.xml
 # Copy project files
 COPY pom.xml .
 COPY src ./src
